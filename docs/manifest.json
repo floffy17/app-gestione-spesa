@@ -1,0 +1,33 @@
+{
+  "name": "Taccuino",
+  "short_name": "Taccuino",
+  "description": "Promemoria e Costi: diario, da fare, spese giornaliere e costi fissi.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F2F1ED",
+  "theme_color": "#F2F1ED",
+  "lang": "it",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "id": "./"
+}

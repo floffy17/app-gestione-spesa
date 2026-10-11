@@ -10,6 +10,8 @@
 .budget-alert{padding:12px;border-radius:12px;background:#FFF0DC;color:#733C00;font-weight:600}
 .install-help{font-size:13px;line-height:1.5}.install-help summary{cursor:pointer;font-weight:600}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+.category-manager{margin:16px 18px;border-top:1px solid var(--line);padding-top:16px}.category-manager summary{font-weight:700;cursor:pointer}.category-manager .note{margin:12px 0}.category-manager .btn{margin-top:12px}.color-choice{display:flex;align-items:center;gap:16px}.color-choice input{width:64px;height:48px;border:1px solid var(--line);border-radius:10px;padding:4px;background:white}.color-choice span{font-size:16px;color:var(--ink2)}.lab2{display:block}.cat{height:auto;min-height:76px;padding:8px;overflow-wrap:anywhere}.budget-heading strong,.row .txt{overflow-wrap:anywhere;min-width:0}
 </style></head><body>
 <title>Taccuino</title>
 <meta name="theme-color" content="#F2F1ED">
@@ -254,17 +256,18 @@ textarea.field{min-height:128px;line-height:1.35}
    Importi in centesimi (interi). Date locali 'AAAA-MM-GG', mesi 'AAAA-MM'.
    ========================================================= */
 
-const VERSION = '1.2';
+const VERSION = '1.3';
 
 /* ---------- Categorie ---------- */
-const CATS = {
-  utilita: { name: 'Utilità', color: 'var(--c-utilita)' },
-  svago:   { name: 'Svago',   color: 'var(--c-svago)' },
-  supermercato: { name: 'Supermercato', color: 'var(--c-supermercato)' },
-  fisse:   { name: 'Fisse',   color: 'var(--c-fisse)' }
-};
-const DAILY = ['utilita', 'svago', 'supermercato'];            // spese giornaliere (schermata principale)
-const MONTH = ['utilita', 'svago', 'supermercato', 'fisse'];   // riepilogo del mese (schermata Mesi)
+const DEFAULT_CATEGORIES = [
+  { id: 'utilita', name: 'Utilità', color: '#2A78D6' },
+  { id: 'svago', name: 'Svago', color: '#EB6834' },
+  { id: 'supermercato', name: 'Supermercato', color: '#1BAF7A' },
+  { id: 'fisse', name: 'Fisse', color: '#4A3AA7' }
+];
+const CATS = Object.fromEntries(DEFAULT_CATEGORIES.map(c => [c.id, { name: c.name, color: c.color }]));
+const DAILY = ['utilita', 'svago', 'supermercato'];
+const MONTH = ['utilita', 'svago', 'supermercato', 'fisse'];
 const DEFAULT_CAT = 'svago';                   // se la descrizione non viene riconosciuta
 
 /* Gruppi riconosciuti in automatico dalla descrizione (sottocategorie).
@@ -406,13 +409,36 @@ const Store = {
     } else this.mem = s;
   }
 };
-const blank = () => ({ v: 1, mov: [], fix: [], dia: [], todo: [], learn: {}, ui: {}, budget: { limit: 0, categories: {}, notices: {}, notifications: false } });
+const blank = () => ({ v: 1, mov: [], fix: [], dia: [], todo: [], learn: {}, ui: {}, categories: DEFAULT_CATEGORIES.map(c => ({ ...c })), budget: { limit: 0, categories: {}, notices: {}, notifications: false } });
+// Category IDs are stable: changing a name/color never changes transaction references.
+function syncCategories(state) {
+  const existing = Array.isArray(state.categories) ? state.categories : [];
+  const seen = new Set(), categories = [];
+  for (const c of existing) {
+    if (!c || typeof c.id !== 'string' || !(DEFAULT_CATEGORIES.some(d => d.id === c.id) || /^custom_[a-z0-9]+$/.test(c.id)) || seen.has(c.id)) continue;
+    seen.add(c.id);
+    const fallback = DEFAULT_CATEGORIES.find(d => d.id === c.id);
+    categories.push({ id: c.id, name: typeof c.name === 'string' && c.name.trim() ? c.name.trim().slice(0, 40) : fallback ? fallback.name : 'Categoria',
+      color: /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : fallback ? fallback.color : '#008300' });
+  }
+  for (const c of DEFAULT_CATEGORIES) if (!seen.has(c.id)) { categories.push({ ...c }); seen.add(c.id); }
+  // Recover custom references if metadata was missing, without losing expenses.
+  for (const x of state.mov) if (/^custom_[a-z0-9]+$/.test(x.c) && !seen.has(x.c)) {
+    categories.push({ id: x.c, name: 'Categoria recuperata', color: '#008300' }); seen.add(x.c);
+  }
+  state.categories = categories;
+  for (const key of Object.keys(CATS)) delete CATS[key];
+  for (const c of categories) CATS[c.id] = { name: c.name, color: c.color };
+  DAILY.splice(0, DAILY.length, ...categories.filter(c => c.id !== 'fisse').map(c => c.id));
+  MONTH.splice(0, MONTH.length, ...categories.map(c => c.id));
+}
 function fixup(s) {
   const b = blank();
   for (const k in b) if (s[k] == null) s[k] = b[k];
   s.budget = Object.assign({ limit: 0, categories: {}, notices: {}, notifications: false }, s.budget);
   if (!Number.isSafeInteger(s.budget.limit) || s.budget.limit < 0) s.budget.limit = 0;
   if (!s.budget.categories || typeof s.budget.categories !== 'object') s.budget.categories = {};
+  syncCategories(s);
   for (const c of MONTH) if (!Number.isSafeInteger(s.budget.categories[c]) || s.budget.categories[c] < 0) s.budget.categories[c] = 0;
   if (!s.budget.notices || typeof s.budget.notices !== 'object') s.budget.notices = {};
   // 1.0 → 1.1: la categoria «Altro» confluisce in Svago
@@ -422,6 +448,7 @@ function fixup(s) {
 }
 let S = Store.load();
 S = S ? fixup(S) : (window.TACCUINO_DEMO ? demoData() : blank());
+syncCategories(S);
 const persist = () => Store.save(S);
 
 /* ---------- Stato dell'interfaccia ---------- */
@@ -442,7 +469,7 @@ function fixedAmount(f, m) {
 }
 /* daily = spese giornaliere (Utilità + Svago); out = daily + costi fissi */
 function monthStats(m) {
-  const cats = { utilita: 0, svago: 0, supermercato: 0, fisse: 0 };
+  const cats = Object.fromEntries(MONTH.map(c => [c, 0]));
   let inc = 0;
   for (const x of S.mov) {
     if (x.d.slice(0, 7) !== m) continue;
@@ -568,7 +595,7 @@ const times = (n) => n + (n === 1 ? ' volta' : ' volte');
 
 function legendRow(c, v, total) {
   const pct = total && v ? Math.round((v / total) * 100) + '%' : '';
-  return `<div class="row ${v ? '' : 'zero'}">${mark(CATS[c].color)}<span class="txt">${CATS[c].name}${pct ? `<span class="pc">${pct}</span>` : ''}</span><span class="amt">${eur(v)}</span></div>`;
+  return `<div class="row ${v ? '' : 'zero'}">${mark(CATS[c].color)}<span class="txt">${esc(CATS[c].name)}${pct ? `<span class="pc">${pct}</span>` : ''}</span><span class="amt">${eur(v)}</span></div>`;
 }
 const signed = (c) => (c > 0 ? '+ ' : c < 0 ? '− ' : '') + eur(Math.abs(c));
 
@@ -591,12 +618,19 @@ const nativeApp = () => window.TaccuinoNative && window.TaccuinoNative.isNative(
 function budgetRow(scope) {
   const b = budgetState(scope), label = scope === 'total' ? 'Complessivo' : CATS[scope].name;
   return `<div class="budget-scope" data-budget-scope="${scope}">
-    <div class="budget-heading"><strong>${label}</strong><button class="btn soft" data-act="budget-edit" data-scope="${scope}" aria-label="${b.limit ? 'Modifica' : 'Imposta'} limite ${label}">${b.limit ? 'Modifica' : 'Imposta'}</button></div>
+    <div class="budget-heading"><strong>${esc(label)}</strong><button class="btn soft" data-act="budget-edit" data-scope="${scope}" aria-label="${b.limit ? 'Modifica' : 'Imposta'} limite ${esc(label)}">${b.limit ? 'Modifica' : 'Imposta'}</button></div>
     ${b.limit ? `<div class="budget-total">${eur(b.spent)} <small>su ${eur(b.limit)}</small></div>
-    <progress max="${b.limit}" value="${Math.min(b.spent, b.limit)}" aria-label="Spese ${label} rispetto al limite mensile"></progress>
+    <progress max="${b.limit}" value="${Math.min(b.spent, b.limit)}" aria-label="Spese ${esc(label)} rispetto al limite mensile"></progress>
     <p>${b.spent > b.limit ? 'Superato di ' + eur(b.spent - b.limit) : 'Disponibili: ' + eur(b.limit - b.spent)}</p>
-    ${b.stage ? `<p class="budget-alert" role="status" aria-live="polite">${budgetMessage(b)}</p>` : ''}` : `<p class="note">${eur(b.spent)} spesi · nessun limite impostato</p>`}
+    ${b.stage ? `<p class="budget-alert" role="status" aria-live="polite">${esc(budgetMessage(b))}</p>` : ''}` : `<p class="note">${eur(b.spent)} spesi · nessun limite impostato</p>`}
   </div>`;
+}
+function categoryManager() {
+  return `<details class="category-manager"><summary>Gestisci macrocategorie</summary>
+    <p class="note">Modifica nome, colore e limite senza perdere le spese associate. Le nuove categorie si scelgono quando aggiungi una spesa; l’app impara dalle tue scelte.</p>
+    ${MONTH.map(id => `<button class="row" data-act="category-edit" data-id="${id}">${mark(CATS[id].color)}<span class="txt">${esc(CATS[id].name)}${id === 'fisse' ? '<small>Costi ricorrenti mensili</small>' : ''}</span><span class="chev">${IC.right}</span></button>`).join('')}
+    <button class="btn sec" data-act="category-new">${IC.plus}Aggiungi macrocategoria</button>
+  </details>`;
 }
 function budgetCard() {
   const enabled = S.budget.notifications;
@@ -604,6 +638,7 @@ function budgetCard() {
     <div class="ch"><h3>Budget di ${monthName(thisMonth())}</h3></div>
     ${budgetRow('total')}
     <details class="category-budgets" ${MONTH.some(c => budgetState(c).stage) ? 'open' : ''}><summary>Limiti per categoria</summary>${MONTH.map(budgetRow).join('')}</details>
+    ${categoryManager()}
     <button class="btn sec" data-act="notifications">${enabled ? 'Disattiva notifiche' : 'Attiva notifiche'}</button>
     <p class="note" id="notification-status" role="status">${esc(notificationStatus || (enabled ? 'Notifiche attive. Gli avvisi vengono controllati quando usi o riapri l’app.' : 'Avvisi nell’app all’80% e al 100%. Per le notifiche del dispositivo serve il consenso.'))}</p>
     ${nativeApp() ? '' : '<details class="install-help"><summary>Installa su Android o iPhone</summary><p>Apri il sito in HTTPS. Su Android scegli “Installa app” dal menu del browser. Su iPhone apri in Safari, tocca Condividi e “Aggiungi alla schermata Home”. Dopo il primo caricamento puoi usarla anche offline. Per le notifiche web su iPhone serve iOS 16.4 o successivo e l’app nella schermata Home. I dati restano su questo dispositivo.</p></details>'}
@@ -661,7 +696,7 @@ function catPage(m, st) {
   const parts = DAILY.map((c) => ({ v: st.cats[c], color: CATS[c].color, cat: c }));
   const rows = DAILY.map((c) => {
     const v = st.cats[c], pct = st.daily && v ? Math.round((v / st.daily) * 100) + '%' : '';
-    return `<button class="row ${v ? '' : 'zero'}" data-act="drill" data-cat="${c}" aria-label="Dettaglio ${CATS[c].name}">${mark(CATS[c].color)}<span class="txt">${CATS[c].name}${pct ? `<span class="pc">${pct}</span>` : ''}</span><span class="amt">${eur(v)}</span><span class="chev">${IC.right}</span></button>`;
+    return `<button class="row ${v ? '' : 'zero'}" data-act="drill" data-cat="${c}" aria-label="Dettaglio ${esc(CATS[c].name)}">${mark(CATS[c].color)}<span class="txt">${esc(CATS[c].name)}${pct ? `<span class="pc">${pct}</span>` : ''}</span><span class="amt">${eur(v)}</span><span class="chev">${IC.right}</span></button>`;
   }).join('');
   return `<div class="ptitle">Spese<span>${monthName(m)}</span></div>
     <div class="donut">${donut(parts, st.daily)}
@@ -680,10 +715,10 @@ function drillPage(m, c) {
   assignColors(items.filter((e) => !e.varie));
   for (const e of items) if (e.varie) e.color = 'var(--c-varie)';
   const rows = items.map((e) => `<div class="row">${mark(e.color)}<span class="txt">${esc(e.n)}<small>${times(e.count)} · ${Math.round((e.sum / tot) * 100)}%</small></span><span class="amt">${eur(e.sum)}</span></div>`).join('');
-  return `<div class="ptitle"><button class="back" data-act="drill-back" aria-label="Torna alle categorie">${IC.left}${CATS[c].name}</button><span>${monthName(m)}</span></div>
+  return `<div class="ptitle"><button class="back" data-act="drill-back" aria-label="Torna alle categorie">${IC.left}${esc(CATS[c].name)}</button><span>${monthName(m)}</span></div>
     <button class="donut" data-act="drill-back" aria-label="Torna alle categorie">${donut(items.map((e) => ({ v: e.sum, color: e.color })), tot)}
       <span class="ctr"><span class="big">${eur0(tot)}</span><span class="sm">totale</span></span></button>
-    <div class="legend">${tot ? rows : `<div class="empty">Nessuna spesa in ${CATS[c].name} questo mese.</div>`}</div>`;
+    <div class="legend">${tot ? rows : `<div class="empty">Nessuna spesa in ${esc(CATS[c].name)} questo mese.</div>`}</div>`;
 }
 function pieCard() {
   const m = thisMonth(), st = monthStats(m), mn = monthName(m);
@@ -710,7 +745,7 @@ function pieCard() {
 function movRow(x) {
   const inc = x.c === 'entrata';
   const mk = inc ? '<span class="mk"><span class="plus" aria-hidden="true">+</span></span>' : mark(CATS[x.c].color);
-  const label = x.t ? esc(x.t) : (inc ? 'Entrata' : CATS[x.c].name);
+  const label = x.t ? esc(x.t) : (inc ? 'Entrata' : esc(CATS[x.c].name));
   const sub = inc ? '<small>Entrata</small>' : '';
   return `<button class="row ${U.flash === x.id ? 'flash' : ''}" data-act="edit-mov" data-id="${x.id}">${mk}<span class="txt">${label}${sub}</span><span class="amt">${inc ? '+ ' : ''}${eur(x.a)}</span></button>`;
 }
@@ -916,7 +951,13 @@ let F = null;
 function openSheet(kind, item) {
   F = { kind, id: item ? item.id : null, armed: false, manual: !!item };
   const t = today();
-  if (kind === 'budget') {
+  if (kind === 'category') {
+    const category = item ? S.categories.find(c => c.id === item.id) : null;
+    F.text = category ? category.name : '';
+    const choices = ['#008300', '#E87BA4', '#EDA100', '#008B8B', '#9B4DCA', '#E34948'];
+    F.color = category ? category.color : choices.find(color => !S.categories.some(c => c.color.toLowerCase() === color.toLowerCase())) || choices[S.categories.length % choices.length];
+    F.amount = category && S.budget.categories[category.id] ? toInput(S.budget.categories[category.id]) : '';
+  } else if (kind === 'budget') {
     F.scope = item && item.scope || 'total';
     F.id = null;
     const limit = F.scope === 'total' ? S.budget.limit : S.budget.categories[F.scope];
@@ -962,6 +1003,7 @@ const amountField = (focus) => `<label class="amount"><span>€</span><input id=
 function sheetHTML() {
   const k = F.kind, edit = !!F.id;
   const titles = {
+    category: edit ? 'Modifica macrocategoria' : 'Nuova macrocategoria',
     budget: F.scope && F.scope !== 'total' ? 'Limite · ' + CATS[F.scope].name : 'Limite mensile complessivo',
     exp: edit ? 'Modifica spesa' : 'Nuova spesa',
     inc: edit ? 'Modifica entrata' : 'Nuova entrata',
@@ -969,10 +1011,16 @@ function sheetHTML() {
     dia: edit ? 'Modifica attività' : 'Nuova attività',
     todo: edit ? 'Modifica voce' : 'Nuova voce'
   };
-  const saves = { budget: 'Salva limite', exp: 'Salva spesa', inc: 'Salva entrata', fix: 'Salva', dia: 'Salva', todo: edit ? 'Salva' : 'Aggiungi' };
+  const saves = { category: 'Salva categoria', budget: 'Salva limite', exp: 'Salva spesa', inc: 'Salva entrata', fix: 'Salva', dia: 'Salva', todo: edit ? 'Salva' : 'Aggiungi' };
   const dels = { exp: 'Elimina spesa', inc: 'Elimina entrata', fix: 'Elimina da ' + monthName(F.month || thisMonth()) + ' in poi', dia: 'Elimina attività', todo: 'Elimina voce' };
   let b = '';
-  if (k === 'budget') {
+  if (k === 'category') {
+    b += `<label class="lab2 first" for="f-text">Nome</label><input class="field" id="f-text" maxlength="40" value="${esc(F.text)}" placeholder="Es. Viaggi, Animali, Salute" data-focus>
+      <label class="lab2" for="f-color">Colore nel grafico</label><div class="color-choice"><input id="f-color" type="color" value="${F.color}"><span id="f-color-value">${F.color}</span></div>
+      <div class="lab2">Limite mensile (facoltativo)</div>${amountField(false)}
+      <p class="note">Lascia vuoto o inserisci 0 per non impostare un limite. ${F.id === 'fisse' ? 'Questa categoria continua a conteggiare i costi ricorrenti.' : ''}</p>
+      <p class="hint" id="category-error" role="status"></p>`;
+  } else if (k === 'budget') {
     b += '<p class="note">Il limite si rinnova ogni mese. Il budget complessivo include anche i costi fissi; i limiti di categoria sono indipendenti. Avvisi all’80% e al 100%. Le entrate non riducono le spese.</p>' + amountField(true);
     b += '<button class="btn sec" data-act="budget-remove">Rimuovi limite</button>';
   } else if (k === 'exp' || k === 'inc') {
@@ -991,8 +1039,8 @@ function sheetHTML() {
   } else {
     b += `<input class="field" id="f-text" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" placeholder="Cosa devi fare?" aria-label="Da fare" value="${esc(F.text)}" data-focus>`;
   }
-  if (edit) b += `<button class="btn del" data-act="del">${dels[k]}</button>`;
-  return `<div class="sh-head"><h2 id="sh-title">${titles[k]}</h2><button class="x" data-act="close" aria-label="Chiudi">${IC.close}</button></div>
+  if (edit && k !== 'category') b += `<button class="btn del" data-act="del">${dels[k]}</button>`;
+  return `<div class="sh-head"><h2 id="sh-title">${esc(titles[k])}</h2><button class="x" data-act="close" aria-label="Chiudi">${IC.close}</button></div>
     <div class="sh-body">${b}</div>
     <div class="sh-foot"><button class="btn pri" id="f-save" data-act="save">${saves[k]}</button></div>`;
 }
@@ -1017,6 +1065,8 @@ function bindSheet() {
       else txt.blur();
     });
   }
+  const color = $('#f-color');
+  if (color) color.addEventListener('input', () => { F.color = color.value; $('#f-color-value').textContent = color.value; updateSave(); });
   renderCats(); renderSugg(); renderDates(); updateSave();
 }
 function autoCat() {
@@ -1028,8 +1078,8 @@ function autoCat() {
 function renderCats() {
   const el = $('#f-cats');
   if (!el) return;
-  el.innerHTML = DAILY.map((c) => `<button class="cat ${F.cat === c ? 'on' : ''}" data-act="cat" data-cat="${c}" aria-pressed="${F.cat === c}"><span class="dot" style="background:${CATS[c].color}"></span>${CATS[c].name}</button>`).join('');
-  $('#f-hint').textContent = F.manual ? '' : F.known ? 'Riconosciuta dalla descrizione: puoi cambiarla.' : 'Svago è la categoria predefinita: puoi cambiarla.';
+  el.innerHTML = DAILY.map((c) => `<button class="cat ${F.cat === c ? 'on' : ''}" data-act="cat" data-cat="${c}" aria-pressed="${F.cat === c}"><span class="dot" style="background:${CATS[c].color}"></span>${esc(CATS[c].name)}</button>`).join('');
+  $('#f-hint').textContent = F.manual ? '' : F.known ? 'Riconosciuta dalla descrizione: puoi cambiarla.' : CATS[DEFAULT_CAT].name + ' è la categoria predefinita: puoi cambiarla.';
 }
 function renderSugg() {
   const el = $('#f-sugg');
@@ -1050,6 +1100,14 @@ function renderDates() {
 function valid() {
   if (!F) return false;
   const k = F.kind;
+  if (k === 'category') {
+    const name = F.text.trim();
+    const duplicate = S.categories.some(c => c.id !== F.id && c.name.toLocaleLowerCase('it-IT') === name.toLocaleLowerCase('it-IT'));
+    const amountOK = !F.amount.trim() || /^\d+(?:[.,]\d{1,2})?$/.test(F.amount.trim());
+    const error = $('#category-error');
+    if (error) error.textContent = duplicate ? 'Questo nome è già usato: scegline uno diverso.' : !amountOK ? 'Inserisci un limite valido, per esempio 150,00.' : '';
+    return name.length > 0 && name.length <= 40 && !duplicate && /^#[0-9a-f]{6}$/i.test(F.color) && amountOK;
+  }
   if (k === 'budget') return parseAmount(F.amount) > 0;
   if (k === 'exp') return parseAmount(F.amount) > 0;
   if (k === 'inc') return parseAmount(F.amount) > 0;
@@ -1068,6 +1126,18 @@ function setFixedFrom(f, m, a) {
 }
 function saveSheet() {
   if (!valid()) return;
+  if (F.kind === 'category') {
+    const id = F.id || 'custom_' + uid();
+    const category = S.categories.find(c => c.id === id);
+    if (category) { category.name = F.text.trim(); category.color = F.color; }
+    else S.categories.push({ id, name: F.text.trim(), color: F.color });
+    const limit = parseAmount(F.amount);
+    if (limit !== (S.budget.categories[id] || 0)) {
+      for (const key of Object.keys(S.budget.notices)) if (key.endsWith(':' + id)) delete S.budget.notices[key];
+    }
+    S.budget.categories[id] = limit;
+    syncCategories(S); persist(); closeSheet(); checkBudget(); render(true); return;
+  }
   if (F.kind === 'budget') {
     const limit = parseAmount(F.amount);
     const previous = F.scope === 'total' ? S.budget.limit : S.budget.categories[F.scope];
@@ -1120,6 +1190,8 @@ function deleteItem() {
 
 /* ---------- Azioni ---------- */
 const A = {
+  'category-new': () => openSheet('category'),
+  'category-edit': (el) => openSheet('category', { id: el.dataset.id }),
   'budget-edit': (el) => openSheet('budget', { scope: el.dataset.scope || 'total' }),
   'budget-remove': () => {
     if (F.scope === 'total') S.budget.limit = 0; else S.budget.categories[F.scope] = 0;

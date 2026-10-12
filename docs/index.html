@@ -12,6 +12,7 @@
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 
 .category-manager{margin:16px 18px;border-top:1px solid var(--line);padding-top:16px}.category-manager summary{font-weight:700;cursor:pointer}.category-manager .note{margin:12px 0}.category-manager .btn{margin-top:12px}.color-choice{display:flex;align-items:center;gap:16px}.color-choice input{width:64px;height:48px;border:1px solid var(--line);border-radius:10px;padding:4px;background:white}.color-choice span{font-size:16px;color:var(--ink2)}.lab2{display:block}.cat{height:auto;min-height:76px;padding:8px;overflow-wrap:anywhere}.budget-heading strong,.row .txt{overflow-wrap:anywhere;min-width:0}
+.date-field{display:flex;flex-direction:column;gap:8px;flex-basis:100%;margin-top:8px;font-size:15px;font-weight:650;color:var(--ink2)}.date-field input[type=date]{position:static;display:block;box-sizing:border-box;width:100%;min-width:0;min-height:52px;padding:12px;border:2px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink);font:inherit;font-size:18px;opacity:1;pointer-events:auto}
 </style></head><body>
 <title>Taccuino</title>
 <meta name="theme-color" content="#F2F1ED">
@@ -256,7 +257,7 @@ textarea.field{min-height:128px;line-height:1.35}
    Importi in centesimi (interi). Date locali 'AAAA-MM-GG', mesi 'AAAA-MM'.
    ========================================================= */
 
-const VERSION = '1.3';
+const VERSION = '1.3.1';
 
 /* ---------- Categorie ---------- */
 const DEFAULT_CATEGORIES = [
@@ -1087,19 +1088,30 @@ function renderSugg() {
   if (F.id) { el.innerHTML = ''; return; }
   el.innerHTML = frequent(F.text).map((e) => `<button class="chip" data-act="sugg" data-t="${esc(e.t)}" data-c="${e.c}" data-a="${e.a}"><span class="dot" style="background:${CATS[e.c].color}"></span>${esc(e.t)}</button>`).join('');
 }
+function validDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && ymd(parseYmd(value)) === value;
+}
 function renderDates() {
   const el = $('#f-date');
   if (!el) return;
-  const t = today(), y = addDays(t, -1), custom = F.date !== t && F.date !== y;
+  const t = today(), y = addDays(t, -1);
   el.innerHTML = `<button class="chip ${F.date === t ? 'on' : ''}" data-act="date" data-d="${t}">Oggi</button>
     <button class="chip ${F.date === y ? 'on' : ''}" data-act="date" data-d="${y}">Ieri</button>
-    <button class="chip ${custom ? 'on' : ''}" data-act="date-pick">${custom ? shortDate(F.date) : 'Altra data'}<input type="date" id="f-date-in" tabindex="-1" aria-hidden="true" value="${F.date}"></button>`;
+    <label class="date-field" for="f-date-in">Scegli una data<input type="date" id="f-date-in" aria-label="Data della registrazione" value="${esc(F.date)}" required></label>`;
   const inp = $('#f-date-in');
-  inp.addEventListener('change', () => { if (inp.value) { F.date = inp.value; renderDates(); } });
+  const updateDate = () => {
+    F.date = inp.value;
+    el.querySelectorAll('[data-act="date"]').forEach(button => button.classList.toggle('on', button.dataset.d === F.date));
+    updateSave();
+  };
+  // Keep the input mounted while the native calendar is open (Safari/iOS).
+  inp.addEventListener('input', updateDate);
+  inp.addEventListener('change', updateDate);
 }
 function valid() {
   if (!F) return false;
   const k = F.kind;
+  if (['exp', 'inc', 'dia'].includes(k) && !validDate(F.date)) return false;
   if (k === 'category') {
     const name = F.text.trim();
     const duplicate = S.categories.some(c => c.id !== F.id && c.name.toLocaleLowerCase('it-IT') === name.toLocaleLowerCase('it-IT'));
@@ -1260,12 +1272,7 @@ const A = {
     if (!parseAmount(F.amount)) { F.amount = toInput(+el.dataset.a); $('#f-amt').value = F.amount; }
     renderCats(); renderSugg(); updateSave();
   },
-  date: (el) => { F.date = el.dataset.d; renderDates(); },
-  'date-pick': () => {
-    const inp = $('#f-date-in');
-    if (!inp) return;
-    try { if (inp.showPicker) inp.showPicker(); else { inp.focus(); inp.click(); } } catch (e) { inp.focus(); inp.click(); }
-  }
+  date: (el) => { F.date = el.dataset.d; renderDates(); updateSave(); }
 };
 document.addEventListener('click', (e) => {
   const el = e.target.closest('[data-act]');

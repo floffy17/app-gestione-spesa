@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory() as temp:
         page.wait_for_function('navigator.serviceWorker.controller !== null')
         # Replace the files exactly as a Pages deployment would; origin and storage remain unchanged.
         shutil.copytree(ROOT/'docs',site,dirs_exist_ok=True)
-        page.reload();page.wait_for_function('__taccuino.version === "1.3"')
+        page.reload();page.wait_for_function('__taccuino.version === "1.3.1"')
         state=page.evaluate('__taccuino.S()')
         for key in ['mov','fix','dia','todo','learn','ui']:assert state[key]==fixture[key],key
         assert state['budget']['limit']==50000 and state['budget']['categories']['svago']==20000
@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory() as temp:
         edit(page,'utilita','<b>Casa</b>','#eda100','0')
         assert page.locator('[data-act="drill"][data-cat="utilita"] .txt').inner_text().startswith('<b>Casa</b>')
         assert page.locator('[data-act="drill"][data-cat="utilita"] .txt b').count()==0
-        page.reload();page.wait_for_function('__taccuino.version === "1.3"')
+        page.reload();page.wait_for_function('__taccuino.version === "1.3.1"')
         state=page.evaluate('__taccuino.S()')
         assert len(state['mov'])==3 and state['mov'][:2]==fixture['mov']
         assert state['dia']==fixture['dia'] and state['todo']==fixture['todo'] and state['fix']==fixture['fix']
@@ -83,8 +83,8 @@ with tempfile.TemporaryDirectory() as temp:
         assert page.evaluate('(id)=>__taccuino.budgetState(id).spent',custom)==4000
         page.wait_for_function('navigator.serviceWorker.controller !== null')
         page.evaluate('navigator.serviceWorker.getRegistration().then(r=>r.update())')
-        page.wait_for_function('caches.keys().then(keys=>keys.includes("taccuino-v1.3.0"))')
-        context.set_offline(True);page.reload();page.wait_for_function('__taccuino.version === "1.3"')
+        page.wait_for_function('caches.keys().then(keys=>keys.includes("taccuino-v1.3.1"))')
+        context.set_offline(True);page.reload();page.wait_for_function('__taccuino.version === "1.3.1"')
         assert page.evaluate('__taccuino.S().mov.length')==3
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         assert not errors,errors

@@ -27,3 +27,7 @@ python3 tests/categories.py
 ```
 
 Il test della migrazione usa il commit precedente ab907b5502d51e315d81d8422671ac065bf40d5e, che deve essere disponibile nella cronologia Git locale. Richiede Playwright Python e Chromium (il percorso predefinito del test è /usr/bin/chromium).
+
+## Versione 1.3.1: scelta della data
+
+Il modulo usa un campo data nativo visibile, accessibile con un tocco diretto e senza apertura programmatica del calendario. Consente date passate e future per spese, entrate e diario; mantiene Oggi e Ieri. La data non può essere vuota quando si salva. Sono stati verificati inserimento, modifica, totali per mese e persistenza in Chromium. Safari/iOS resta da verificare su dispositivo reale.
